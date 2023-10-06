@@ -13,14 +13,13 @@ class StockManagementClient:
 
     @Pyro5.api.expose 
     def notify_replenishment(self, product_code):
-        print("ok2")
         # Método chamado pelo servidor para notificar sobre a reposição de estoque
-        print(f"Produto {product_code} atingiu o estoque mínimo. É necessário repor o estoque.")
+        print(f"> Notificação: Produto de código {product_code} está abaixo do estoque mínimo. É necessário repor o estoque.")
 
     @Pyro5.api.expose 
     def notify_unsold_products(self, product):
         # Método chamado pelo servidor para enviar relatórios de produtos não vendidos
-        print(f"Produto {product['name']} ({product['code']}) não foi vendido.")
+        print(f"> Notificação: {product['name']} ({product['code']}) não foi vendido.")
 
 
 def keysGenerator():
@@ -91,7 +90,12 @@ if __name__ == "__main__":
 
 
     server = Pyro5.api.Proxy(server_uri) 
-    name = "NomeDoGestor2"  # Nome do gestor de estoque
+
+
+
+    #name = "NomeDoGestor2"  # Nome do gestor de estoque
+ 
+    name = input("Qual o seu nome? ")
     response = server.register_user(name, public_key, uri)
     print(response)
     # O cliente agora está registrado no servidor e pronto para receber notificações e relatórios
@@ -104,44 +108,44 @@ if __name__ == "__main__":
     message = name
     signature = sign_message(message, pk)
     
-    #while(True):
-    questions = [
-            inquirer.List('action', message="Qual acao deseja tomar?", 
-                          choices=['Entrada de produtos', 'Saida de produtos', 'Relatorio'],)
+    while(True):
+        questions = [
+                inquirer.List('action', message="Qual acao deseja tomar?", 
+                            choices=['Entrada de produtos', 'Saida de produtos', 'Relatorio'],)
 
-    ]
-    answer = inquirer.prompt(questions)
-    print(answer)
-    if(answer['action'] == 'Entrada de produtos'):
-            print('Entrada de produtos')
-            server.record_entry(name, 1, 'bulacha', 'Bolacha Waffer', 10, 5.5, 50, signature)
-    elif(answer['action'] == 'Saida de produtos'):
-            print('Saida de produtos')
-            server.record_exit(1, name, 10, signature)
-    elif(answer['action'] == 'Relatorio'):
-            print('Relatorio')
-            questions2 = [
-            inquirer.List('action2', message="Qual acao deseja tomar?", 
-                          choices=['Produtos em estoque', 'Fluxo de movimentação', 'Lista de produtos sem saída'])
+        ]
+        answer = inquirer.prompt(questions)
+        print(answer)
+        if(answer['action'] == 'Entrada de produtos'):
+                print('Entrada de produtos')
+                server.record_entry(name, 1, 'bulacha', 'Bolacha Waffer', 10, 5.5, 50, signature)
+        elif(answer['action'] == 'Saida de produtos'):
+                print('Saida de produtos')
+                server.record_exit(1, name, 10, signature)
+        elif(answer['action'] == 'Relatorio'):
+                print('Relatorio')
+                questions2 = [
+                inquirer.List('action2', message="Qual acao deseja tomar?", 
+                            choices=['Produtos em estoque', 'Fluxo de movimentação', 'Lista de produtos sem saída'])
 
-             ]
-            answer = inquirer.prompt(questions2)
-            if(answer['action2']== 'Produtos em estoque'):
-                print('Produtos em estoque')
-                produtosEmEstoque= server.generate_stock_report('Produtos em estoque')
-                for product in produtosEmEstoque:
-                    print(f"Produto {product['name']} ({product['code']}) está acima do estoque mínimo possuindo {product['quantity']} unidades em estoque")
+                ]
+                answer = inquirer.prompt(questions2)
+                if(answer['action2']== 'Produtos em estoque'):
+                    print('Produtos em estoque')
+                    produtosEmEstoque= server.generate_stock_report('Produtos em estoque')
+                    for product in produtosEmEstoque:
+                        print(f"Produto {product['name']} ({product['code']}) está acima do estoque mínimo possuindo {product['quantity']} unidades em estoque")
 
-            elif(answer['action2']== 'Fluxo de movimentação'):
-                    print('Fluxo de movimentação')
-                    fluxoMov= server.generate_stock_report('Fluxo de movimentação')
-                    print("Movimentos:")
-                    for product in fluxoMov:
-                        for movement in product['movements']:
-                            print(f"Produto {product['name']} ({product['code']})  - Tipo: {movement['type']}, Quantidade: {movement['quantity']}, Hora: {movement['time']}")
+                elif(answer['action2']== 'Fluxo de movimentação'):
+                        print('Fluxo de movimentação')
+                        fluxoMov= server.generate_stock_report('Fluxo de movimentação')
+                        print("Movimentos:")
+                        for product in fluxoMov:
+                            for movement in product['movements']:
+                                print(f"Produto {product['name']} ({product['code']})  - Tipo: {movement['type']}, Quantidade: {movement['quantity']}, Hora: {movement['time']}")
 
-            elif(answer['action2']== 'Lista de produtos sem saída'):
-                    print('Lista de produtos sem saída')
-                    prodSemSaida = server.generate_stock_report('Lista de produtos sem saída')
-                    for product in prodSemSaida :
-                        print(f"Produto {product['name']} ({product['code']}) não teve movimentos de saída até 2 minutos atrás.")
+                elif(answer['action2']== 'Lista de produtos sem saída'):
+                        print('Lista de produtos sem saída')
+                        prodSemSaida = server.generate_stock_report('Lista de produtos sem saída')
+                        for product in prodSemSaida :
+                            print(f"Produto {product['name']} ({product['code']}) não teve movimentos de saída até 2 minutos atrás.")

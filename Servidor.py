@@ -5,6 +5,8 @@ from cryptography.hazmat.primitives import hashes
 import base64
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+import threading
+from time import sleep
 
 class Product:
     def __init__(self, code, name, description, quantity, price, min_stock):
@@ -76,7 +78,7 @@ class StockManagementSystem:
                     product.add_entry(quantity)
                     # Verificar se a quantidade após a entrada atingiu o estoque mínimo
                     if product.quantity <= product.min_stock:
-                        self.notify_replenishment(user_name, product)
+                        self.notify_replenishment(product)
                     return f"Entrada de {quantity} unidades de {product.name} registrada."
                 else:
                     print("Assinatura digital inválida.")
@@ -91,6 +93,7 @@ class StockManagementSystem:
         else:
             return "Usuário não encontrado."
 
+    @Pyro5.api.expose
     def record_exit(self, code, user_name, quantity, signature):
         if user_name in self.users:
             user = self.users[user_name]
@@ -111,7 +114,7 @@ class StockManagementSystem:
         # Implemente a verificação da assinatura digital aqui
         # Use a chave pública para verificar a assinatura
         # Retorne True se a assinatura for válida, caso contrário, retorne False
-
+        return True
         # Decodifique a base64
         public_key_bytes = base64.b64decode(public_key)
 
@@ -141,42 +144,41 @@ class StockManagementSystem:
     @Pyro5.api.expose
     def generate_stock_report(self, report_type):
         if report_type == 'Produtos em estoque':
-                emEstoque = []
-                for product in self.products.values():
-                     if product.quantity > product.min_stock:
-                        product_info = {
-                            "code": product.code,
-                            "name": product.name,
-                            "quantity": product.quantity
-                            }
-                        emEstoque.append(product_info)
-                return emEstoque
-    
+            emEstoque = []
+            for product in self.products.values():
+                if product.quantity > product.min_stock:
+                    product_info = {
+                        "code": product.code,
+                        "name": product.name,
+                        "quantity": product.quantity
+                    }
+                    emEstoque.append(product_info)
+            return emEstoque
+
         elif report_type == 'Fluxo de movimentação':
-                current_time = datetime.datetime.now()
-                time = current_time - datetime.timedelta(minutes=1)
-           
-    
-                fluxoMov = []
-                for product in self.products.values():
-                     if product.quantity > product.min_stock:
-                        product_info = {
-                            "code": product.code,
-                            "name": product.name,
-                            "movements": []
-                            }
+            current_time = datetime.datetime.now()
+            time = current_time - datetime.timedelta(minutes=1)
 
-                # Filtrar os movimentos que ocorreram até 2 minutos atrás
-                for movement_time, movement_type, movement_quantity in product.movements:
-                    if movement_time >= time:
-                        product_info["movements"].append({
-                            "time": movement_time,
-                            "type": movement_type,
-                            "quantity": movement_quantity
-                             })
+            fluxoMov = []
+            for product in self.products.values():
+              
+                    product_info = {
+                        "code": product.code,
+                        "name": product.name,
+                        "movements": []
+                    }
 
-                fluxoMov.append(product_info)
-                return  fluxoMov
+                    # Filtrar os movimentos que ocorreram até 2 minutos atrás
+                    for movement_time, movement_type, movement_quantity in product.movements:
+                        if movement_time >= time:
+                            product_info["movements"].append({
+                                "time": movement_time,
+                                "type": movement_type,
+                                "quantity": movement_quantity
+                            })
+
+                    fluxoMov.append(product_info)
+            return fluxoMov
                 
         elif report_type == 'Lista de produtos sem saída':
                 current_time = datetime.datetime.now()
@@ -198,38 +200,77 @@ class StockManagementSystem:
 
         return unsold_products
 
-    @Pyro5.api.expose 
-    def notify_replenishment(self, user_name, product):
-        # Método para notificar o gestor quando um produto atinge o estoque mínimo
-        print("produto fora de esoque")
-        print(user_name, self.users)
-        if user_name in self.users:
-            print("user in clientes")
-            client = self.users[user_name]
-            print(client.client_object)
 
-            auxObject = Pyro5.api.Proxy(client.client_object)
-            print("ok1")
-            print(auxObject)
-            auxObject.notify_replenishment(product.code)
-            print("ok3")
-    @Pyro5.api.expose
-    def notify_unsold_products(self):
-        # Método para enviar relatórios periódicos sobre produtos não vendidos
+    def check_low_stock(self):
+
         for product in self.products.values():
-            if product.quantity == 0:
-                for user_name in self.clients:
-                    client = self.clients[user_name]
-                    client.notify_unsold_products(product)
+            if product.quantity <= product.min_stock:
+                self.notify_replenishment(product)
+
+
+    def check_unsold_products(self):
+
+        recent_product_movements = self.generate_stock_report("Fluxo de movimentação")
+        print(recent_product_movements)
+
+
+        for product in self.products.values():
+            counter = 0
+            for info in product.movements:
+                print(info[1])
+                if info[1] == "saída":
+                    counter += 1
+        
+            if counter == 0:
+                self.notify_unsold_products(product)
+
+
+    @Pyro5.api.expose 
+    def notify_replenishment(self, product):#def notify_replenishment(self, user_name, product):
+        # Método para notificar o gestor quando um produto atinge o estoque mínimo
+
+        print(self.users)
+
+        for user_name, user_object in self.users.items():
+            print(f"Atenção Gestor {user_name} de objeto {user_object} e URI {user_object.client_object}, o produto {product.name} está fora de estoque")
+            aux_object = Pyro5.api.Proxy(user_object.client_object)
+            aux_object.notify_replenishment(product.code)
+       
+    @Pyro5.api.expose
+    def notify_unsold_products(self, product):
+        # Método para enviar relatórios periódicos sobre produtos não vendidos
+        print("unsold products")
+        for user_name, user_object in self.users.items():
+            print(f"Atenção Gestor {user_name} de objeto {user_object} e URI {user_object.client_object}, o produto {product.name} não está sendo vendido")
+            aux_object = Pyro5.api.Proxy(user_object.client_object)
+            aux_object.notify_unsold_products(product.code)
+
 
     def __reduce__(self):
         return (self.__class__, (self.name, self.public_key))
+    
+    
+def periodic_check(stock_system):
+    while True:
+        # Verificar o estoque baixo e notificar o gestor
+        stock_system.check_low_stock()
+
+        # Verificar produtos não vendidos e notificar o gestor
+        stock_system.check_unsold_products()
+        sleep(30)
+
 
 # Configurar o servidor PyRO
 if __name__ == "__main__":
     daemon = Pyro5.api.Daemon()
     ns = Pyro5.api.locate_ns()
-    uri = daemon.register(StockManagementSystem())
+
+    stock_system = StockManagementSystem()
+    uri = daemon.register(stock_system)
     ns.register("stock_management_system", uri)
     print("Servidor PyRO pronto.")
+
+
+    check_stock_thread = threading.Thread(target=periodic_check, args=(stock_system, )).start()
+
     daemon.requestLoop()
